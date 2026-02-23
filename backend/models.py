@@ -12,6 +12,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     daily_new_limit = Column(Integer, default=20)
+    anthropic_api_key = Column(Text, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     cards = relationship("Card", back_populates="owner")
@@ -23,6 +24,10 @@ class Source(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    source_type = Column(String, default="manual")  # manual, csv, markdown
+    uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    processed = Column(Integer, default=1)  # 0=pending, 1=done
+    raw_text = Column(Text, default="")
 
     cards = relationship("Card", back_populates="source")
 
@@ -36,6 +41,10 @@ class Card(Base):
     front = Column(Text, nullable=False)
     back = Column(Text, nullable=False)
     notes = Column(Text, default="")
+    romaji = Column(Text, default="")
+    part_of_speech = Column(Text, default="")
+    tags = Column(Text, default="")
+    audio_url = Column(Text, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="cards")

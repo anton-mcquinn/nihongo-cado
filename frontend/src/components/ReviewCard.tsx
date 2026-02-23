@@ -1,11 +1,12 @@
 interface Props {
   front: string;
   back: string;
+  romaji?: string;
   flipped: boolean;
   onFlip: () => void;
 }
 
-export default function ReviewCard({ front, back, flipped, onFlip }: Props) {
+export default function ReviewCard({ front, back, romaji, flipped, onFlip }: Props) {
   return (
     <div
       onClick={onFlip}
@@ -32,6 +33,11 @@ export default function ReviewCard({ front, back, flipped, onFlip }: Props) {
       }}>
         {flipped ? back : front}
       </p>
+      {flipped && romaji && (
+        <p style={{ color: 'var(--text-secondary)', marginTop: 12, fontSize: '1rem' }}>
+          {romaji}
+        </p>
+      )}
       {!flipped && (
         <p style={{ color: 'var(--text-secondary)', marginTop: 16, fontSize: '0.9rem' }}>
           Tap to reveal

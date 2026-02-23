@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import User
-from schemas import UserCreate, UserResponse, Token
+from schemas import UserCreate, UserResponse, Token, UserSettingsUpdate, UserSettingsResponse
 from auth import hash_password, verify_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -31,3 +31,29 @@ def login(data: UserCreate, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/settings", response_model=UserSettingsResponse)
+def get_settings(current_user: User = Depends(get_current_user)):
+    return UserSettingsResponse(
+        anthropic_api_key_set=bool(current_user.anthropic_api_key),
+        daily_new_limit=current_user.daily_new_limit,
+    )
+
+
+@router.put("/settings", response_model=UserSettingsResponse)
+def update_settings(
+    data: UserSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if data.anthropic_api_key is not None:
+        current_user.anthropic_api_key = data.anthropic_api_key
+    if data.daily_new_limit is not None:
+        current_user.daily_new_limit = data.daily_new_limit
+    db.commit()
+    db.refresh(current_user)
+    return UserSettingsResponse(
+        anthropic_api_key_set=bool(current_user.anthropic_api_key),
+        daily_new_limit=current_user.daily_new_limit,
+    )

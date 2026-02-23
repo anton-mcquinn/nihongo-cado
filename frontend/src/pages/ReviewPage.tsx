@@ -1,13 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import ReviewCard from '../components/ReviewCard';
-
-interface Card {
-  id: number;
-  front: string;
-  back: string;
-  notes: string;
-}
+import type { Card } from '../types';
 
 type State = 'loading' | 'has_cards' | 'done';
 
@@ -69,6 +63,7 @@ export default function ReviewPage() {
       <ReviewCard
         front={card.front}
         back={card.back}
+        romaji={card.romaji}
         flipped={flipped}
         onFlip={() => setFlipped(true)}
       />
