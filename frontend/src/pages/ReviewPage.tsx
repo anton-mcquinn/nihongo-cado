@@ -3,7 +3,7 @@ import api from '../api';
 import ReviewCard from '../components/ReviewCard';
 import type { Card } from '../types';
 
-type State = 'loading' | 'has_cards' | 'done' | 'no_cards';
+type State = 'loading' | 'has_cards' | 'done' | 'all_mastered' | 'no_cards';
 
 export default function ReviewPage() {
   const [queue, setQueue] = useState<Card[]>([]);
@@ -12,10 +12,11 @@ export default function ReviewPage() {
   const [flipped, setFlipped] = useState(false);
   const [state, setState] = useState<State>('loading');
   const [submitting, setSubmitting] = useState(false);
+  const [masteredCount, setMasteredCount] = useState(0);
 
-  const loadDueCards = useCallback(() => {
+  const loadSession = useCallback(() => {
     setState('loading');
-    api.get('/cards/due').then((res) => {
+    api.get('/cards/learning').then((res) => {
       if (res.data.length === 0) {
         setState('no_cards');
       } else {
@@ -23,14 +24,15 @@ export default function ReviewPage() {
         setSessionCards(res.data);
         setCurrentIndex(0);
         setFlipped(false);
+        setMasteredCount(0);
         setState('has_cards');
       }
     });
   }, []);
 
   useEffect(() => {
-    loadDueCards();
-  }, [loadDueCards]);
+    loadSession();
+  }, [loadSession]);
 
   const drillAgain = () => {
     setQueue(sessionCards);
@@ -42,23 +44,59 @@ export default function ReviewPage() {
   const rate = async (quality: number) => {
     if (submitting) return;
     setSubmitting(true);
-    const card = queue[currentIndex];
-    await api.post(`/cards/${card.id}/review`, { quality });
-    setSubmitting(false);
 
-    let newQueue = queue;
-    if (quality === 0) {
-      // Again: append card to end of queue so it cycles back
-      newQueue = [...queue, card];
+    const card = queue[currentIndex];
+    const res = await api.post(`/cards/${card.id}/review`, { quality });
+    const updated: Card = res.data;
+
+    setSubmitting(false);
+    setFlipped(false);
+
+    if (updated.review_log?.status === 'known') {
+      // Card mastered — remove it from session and try to rotate in a replacement
+      const filteredQueue = queue.filter((c) => c.id !== card.id);
+      const filteredSession = sessionCards.filter((c) => c.id !== card.id);
+      const sessionIds = new Set(filteredSession.map((c) => c.id));
+
+      const learningRes = await api.get('/cards/learning');
+      const replacement: Card | undefined = learningRes.data.find(
+        (c: Card) => !sessionIds.has(c.id)
+      );
+
+      const newQueue = replacement ? [...filteredQueue, replacement] : filteredQueue;
+      const newSession = replacement ? [...filteredSession, replacement] : filteredSession;
+
+      setMasteredCount((n) => n + 1);
+      setSessionCards(newSession);
       setQueue(newQueue);
+
+      if (newQueue.length === 0) {
+        setState('all_mastered');
+      } else if (currentIndex >= newQueue.length) {
+        setCurrentIndex(0);
+      }
+      // else currentIndex stays — now points to the next card since current was removed
+      return;
     }
 
-    const nextIndex = currentIndex + 1;
-    if (nextIndex >= newQueue.length) {
-      setState('done');
+    // Not mastered yet
+    if (quality === 0) {
+      // Again: cycle this card back to the end
+      const newQueue = [...queue, card];
+      setQueue(newQueue);
+      const nextIndex = currentIndex + 1;
+      if (nextIndex >= newQueue.length) {
+        setState('done');
+      } else {
+        setCurrentIndex(nextIndex);
+      }
     } else {
-      setCurrentIndex(nextIndex);
-      setFlipped(false);
+      const nextIndex = currentIndex + 1;
+      if (nextIndex >= queue.length) {
+        setState('done');
+      } else {
+        setCurrentIndex(nextIndex);
+      }
     }
   };
 
@@ -73,13 +111,28 @@ export default function ReviewPage() {
   if (state === 'no_cards') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 24, gap: 16 }}>
-        <p style={{ fontSize: '3rem', marginBottom: 8 }}>&#128218;</p>
-        <h2>No cards due</h2>
+        <p style={{ fontSize: '3rem', marginBottom: 8 }}>&#127881;</p>
+        <h2>All cards mastered!</h2>
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
-          You're all caught up! Check back later when more cards are due.
+          No cards left to learn. Add more cards to keep studying.
         </p>
-        <button className="btn-primary" style={{ marginTop: 8 }} onClick={loadDueCards}>
+        <button className="btn-primary" style={{ marginTop: 8 }} onClick={loadSession}>
           Check Again
+        </button>
+      </div>
+    );
+  }
+
+  if (state === 'all_mastered') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 24, gap: 16 }}>
+        <p style={{ fontSize: '3rem', marginBottom: 8 }}>&#11088;</p>
+        <h2>Session mastered!</h2>
+        <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+          You mastered all {masteredCount} card{masteredCount !== 1 ? 's' : ''} in this session.
+        </p>
+        <button className="btn-primary" style={{ marginTop: 8 }} onClick={loadSession}>
+          Start New Session
         </button>
       </div>
     );
@@ -89,17 +142,17 @@ export default function ReviewPage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 24, gap: 16 }}>
         <p style={{ fontSize: '3rem', marginBottom: 8 }}>&#127881;</p>
-        <h2>Session Complete!</h2>
+        <h2>Round complete!</h2>
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
-          You reviewed {sessionCards.length} card{sessionCards.length !== 1 ? 's' : ''}.
-          Cards are scheduled for future review based on your ratings.
+          {masteredCount > 0 && `${masteredCount} card${masteredCount !== 1 ? 's' : ''} mastered. `}
+          {sessionCards.length} card{sessionCards.length !== 1 ? 's' : ''} still in progress.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320, marginTop: 8 }}>
           <button className="btn-primary" onClick={drillAgain}>
-            Drill Again
+            Keep Drilling
           </button>
-          <button className="btn-secondary" onClick={loadDueCards}>
-            Check for New Reviews
+          <button className="btn-secondary" onClick={loadSession}>
+            New Session
           </button>
         </div>
       </div>
@@ -107,8 +160,8 @@ export default function ReviewPage() {
   }
 
   const card = queue[currentIndex];
-  const remaining = queue.length - currentIndex;
   const againCount = queue.length - sessionCards.length;
+  const remaining = queue.length - currentIndex;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, padding: 24, gap: 24 }}>
@@ -117,6 +170,11 @@ export default function ReviewPage() {
         {againCount > 0 && (
           <span style={{ color: 'var(--accent)', marginLeft: 8 }}>
             ({againCount} again)
+          </span>
+        )}
+        {masteredCount > 0 && (
+          <span style={{ color: 'var(--success)', marginLeft: 8 }}>
+            &#10003; {masteredCount} mastered
           </span>
         )}
       </p>

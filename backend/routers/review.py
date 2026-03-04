@@ -11,6 +11,26 @@ from services.sm2 import sm2
 router = APIRouter(prefix="/api/cards", tags=["review"])
 
 
+@router.get("/learning", response_model=list[CardResponse])
+def get_learning_cards(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """Return non-mastered cards (new/learning) up to daily_new_limit, regardless of schedule."""
+    cards = (
+        db.query(Card)
+        .join(ReviewLog)
+        .options(joinedload(Card.review_log))
+        .filter(
+            Card.user_id == current_user.id,
+            ReviewLog.status.in_(["new", "learning"]),
+        )
+        .order_by(ReviewLog.next_review)
+        .limit(current_user.daily_new_limit)
+        .all()
+    )
+    return cards
+
+
 @router.get("/due", response_model=list[CardResponse])
 def get_due_cards(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
